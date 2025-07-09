@@ -11,11 +11,15 @@ class ImageAveragerApp:
         self.master.title("Bild-Durchschnittsrechner") 
 
         self.images_paths = [] 
-        # Target size is now fixed for processing
+        # Jetzt sind dies die Standard-Ausgangspixelwerte, die geändert werden können
         self.target_size_px = (200, 150) 
         self.current_avg_image_pil = None 
 
         self.current_lang = "de" # Startet in Deutsch
+
+        # Tkinter StringVars für die Eingabefelder der Größe
+        self.width_var = tk.StringVar(value=str(self.target_size_px[0]))
+        self.height_var = tk.StringVar(value=str(self.target_size_px[1]))
 
         # Sprachtexte und humorvolle Nachricht
         self.texts = {
@@ -48,7 +52,9 @@ class ImageAveragerApp:
                 "language_menu": "Sprache wählen",
                 "choose_folder_title": "Wählen Sie einen Ordner mit JPG-Bildern",
                 "choose_files_title": "Wählen Sie einzelne JPG-Bilder aus",
-                "target_size_info": "Zielgröße: 200x150 Pixel", # Angepasster Text
+                "target_size_frame": "Zielgröße des Durchschnittsbildes (Pixel)", # Angepasster Text
+                "width_label": "Breite:",
+                "height_label": "Höhe:",
                 "image_preview_frame": "Vorschau Durchschnittsbild",
                 "eagle_sound": "" # Eagle Sound nicht in Deutsch
             },
@@ -81,7 +87,9 @@ class ImageAveragerApp:
                 "language_menu": "Select Language",
                 "choose_folder_title": "Choose a folder with JPG images",
                 "choose_files_title": "Select single JPG images",
-                "target_size_info": "Target Size: 200x150 Pixels", # Angepasster Text
+                "target_size_frame": "Target Size of Average Image (Pixels)", # Angepasster Text
+                "width_label": "Width:",
+                "height_label": "Height:",
                 "image_preview_frame": "Average Image Preview",
                 "eagle_sound": "Eagle Sound! Hahaha." # Eagle Sound in Englisch
             }
@@ -116,15 +124,25 @@ class ImageAveragerApp:
         self.status_label = tk.Label(self.master, text="", fg="blue")
         self.status_label.pack(pady=5)
 
-        # --- Zielgröße Anzeige (jetzt nur Info) ---
+        # --- Zielgröße Einstellungen (jetzt wieder eingabefähig) ---
         self.target_size_frame = tk.LabelFrame(self.master)
         self.target_size_frame.pack(pady=10, padx=10, fill="x")
+
+        self.width_label = tk.Label(self.target_size_frame, text="")
+        self.width_label.pack(side="left", padx=5, pady=5)
+        self.width_entry = tk.Entry(self.target_size_frame, textvariable=self.width_var, width=8) # Wieder bearbeitbar
+        self.width_entry.pack(side="left", padx=2, pady=5)
+        self.width_entry.bind("<Return>", self.update_target_size_and_process) # Event-Binding
+        self.width_entry.bind("<FocusOut>", self.update_target_size_and_process) # Event-Binding
+
+        self.height_label = tk.Label(self.target_size_frame, text="")
+        self.height_label.pack(side="left", padx=5, pady=5)
+        self.height_entry = tk.Entry(self.target_size_frame, textvariable=self.height_var, width=8) # Wieder bearbeitbar
+        self.height_entry.pack(side="left", padx=2, pady=5)
+        self.height_entry.bind("<Return>", self.update_target_size_and_process) # Event-Binding
+        self.height_entry.bind("<FocusOut>", self.update_target_size_and_process) # Event-Binding
         
-        # Nur ein Label für die feste Größe
-        self.target_size_label = tk.Label(self.target_size_frame, text="")
-        self.target_size_label.pack(padx=5, pady=5)
-        
-        # Inch/CM Button und der "suck" Label sind entfernt worden
+        # Die Inch/CM-Buttons und der "suck" Label sind weiterhin entfernt
         
         # --- Komprimierungs-Option ---
         self.compression_frame = tk.LabelFrame(self.master)
@@ -171,10 +189,32 @@ class ImageAveragerApp:
         if self.current_lang == "en":
             messagebox.showinfo(self.texts["en"]["app_title"], self.texts["en"]["eagle_sound"])
         elif self.current_lang == "de":
-            # Optional: Hier könnte ein anderer deutscher Witz stehen, falls gewünscht
-            pass
+            pass # Kein Witz auf Deutsch
 
-    # update_unit_display und toggle_unit_display sind nicht mehr notwendig und wurden entfernt
+    def update_target_size_and_process(self, event=None):
+        """Aktualisiert die Zielgröße basierend auf den GUI-Eingaben und verarbeitet die Bilder neu."""
+        try:
+            new_width = int(self.width_var.get())
+            new_height = int(self.height_var.get())
+
+            if new_width <= 0 or new_height <= 0:
+                raise ValueError("Breite und Höhe müssen positive Ganzzahlen sein.")
+
+            self.target_size_px = (new_width, new_height)
+            
+            # Bilder neu verarbeiten, falls welche ausgewählt sind
+            if self.images_paths:
+                self.update_image_count_and_process() # Startet den Verarbeitungsthread
+            else:
+                self.status_label.config(text=self.texts[self.current_lang]["status_initial"], fg="blue")
+
+        except ValueError as e:
+            messagebox.showerror(self.texts[self.current_lang]["app_title"], f"{self.texts[self.current_lang]['error_generic'].format(error=e)}\nBitte geben Sie positive Ganzzahlen ein.")
+            # Setze die Werte zurück auf die zuletzt gültigen Pixel-Werte
+            self.width_var.set(str(self.target_size_px[0]))
+            self.height_var.set(str(self.target_size_px[1]))
+            self.status_label.config(text=self.texts[self.current_lang]["error_generic"].format(error="Ungültige Größe, bitte korrigieren."), fg="red")
+
 
     def update_texts(self):
         lang = self.current_lang
@@ -193,10 +233,10 @@ class ImageAveragerApp:
         self.save_button.config(text=texts["save_button"])
         self.image_preview_frame.config(text=texts["image_preview_frame"]) 
         
-        # Aktualisierung des Labels für die feste Zielgröße
-        self.target_size_frame.config(text=texts["target_size_info"])
-        self.target_size_label.config(text=texts["target_size_info"])
-
+        # Aktualisierung der Label für die Zielgröße
+        self.target_size_frame.config(text=texts["target_size_frame"])
+        self.width_label.config(text=texts["width_label"])
+        self.height_label.config(text=texts["height_label"])
 
         if not self.images_paths:
              self.status_label.config(text=texts["status_initial"])
@@ -278,13 +318,17 @@ class ImageAveragerApp:
 
         rgb_arrays = []
 
-        # Die Zielgröße ist jetzt fest auf 200x150 Pixel
+        # Die Zielgröße wird jetzt aus den GUI-Eingaben genommen
         target_w, target_h = self.target_size_px 
+
+        if target_w <= 0 or target_h <= 0:
+            self.master.after(0, lambda: self.status_label.config(text=self.texts[self.current_lang]["error_generic"].format(error="Zielgröße muss positive Ganzzahlen sein. Bitte korrigieren."), fg="red"))
+            return None
 
         for image_path in image_paths:
             try:
                 image = Image.open(image_path).convert('RGB')
-                image = image.resize((target_w, target_h)) # Feste Größe hier anwenden
+                image = image.resize((target_w, target_h)) # Größe hier anwenden
                 rgb_array = np.array(image, dtype=np.float32)
                 rgb_arrays.append(rgb_array)
             except Exception as e:
@@ -306,7 +350,7 @@ class ImageAveragerApp:
         if self.current_avg_image_pil:
             save_path = filedialog.asksaveasfilename(
                 defaultextension=".jpg",
-                filetypes=[("JPEG files", "*.jpg"), ("All files", "*.*")],
+                filetypes=[("JPEG files", "*.jpg"), ("JPEG files", "*.jpeg"), ("All files", "*.*")],
                 title=self.texts[self.current_lang]["save_dialog_title"]
             )
             if save_path:
