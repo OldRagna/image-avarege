@@ -1,14 +1,20 @@
 from PIL import Image
 import numpy as np
 
-IMAGES = 3
+
+images = len(checkjpg())
 target_size = (200, 150)  # Width x Height; adjust as needed
 
 rgb_arrays = []
 
-# Load and resize images to the same size
-for i in range(IMAGES):
-    image = Image.open(f'image{i}.jpg').convert('RGB')
+def checkjpg():
+    files = os.listdir(images)
+    jpg_files = [file for file in files if file.lower().endswith(('.jpg', '.jpeg'))]
+return jpg_files
+
+
+for i in range(images):
+    image = Image.open(f'{jpg_files[i]}.jpg').convert('RGB')
     image = image.resize(target_size)
     rgb_array = np.array(image, dtype=np.float32)  # Use float for averaging
     rgb_arrays.append(rgb_array)
