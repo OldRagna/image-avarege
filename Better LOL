@@ -1,0 +1,332 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk 
+import os
+from PIL import Image, ImageTk
+import numpy as np
+import threading
+
+class ImageAveragerApp:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Bild-Durchschnittsrechner") 
+
+        self.images_paths = [] 
+        # Target size is now fixed for processing
+        self.target_size_px = (200, 150) 
+        self.current_avg_image_pil = None 
+
+        self.current_lang = "de" # Startet in Deutsch
+
+        # Sprachtexte und humorvolle Nachricht
+        self.texts = {
+            "de": {
+                "app_title": "Bild-Durchschnittsrechner",
+                "input_frame": "Bilder Eingabe",
+                "browse_folder": "Ordner auswählen",
+                "add_single_images": "Einzelne Bilder hinzufügen",
+                "clear_selection": "Auswahl löschen",
+                "selected_count": "Ausgewählte Bilder:",
+                "status_initial": "Wählen Sie einen Ordner oder Bilder aus...",
+                "status_processing": "Bilder werden verarbeitet...",
+                "status_preview_ready": "Vorschau des Durchschnittsbildes bereit.",
+                "status_invalid_folder": "Ungültiger Ordner ausgewählt.",
+                "status_no_jpg_in_folder": "Im Ordner '{folder}' wurden keine JPG-Bilder gefunden.",
+                "status_no_images_selected": "Keine Bilder zum Verarbeiten ausgewählt.",
+                "status_no_images_processed": "Keine Bilder erfolgreich verarbeitet.",
+                "status_error_loading_single": "Fehler beim Laden von {filename}: {error}",
+                "save_button": "Durchschnittsbild speichern",
+                "save_dialog_title": "Durchschnittsbild speichern unter",
+                "success_save": "Durchschnittsbild gespeichert als '{path}'.",
+                "error_save": "Fehler beim Speichern des Bildes: {error}",
+                "save_cancelled": "Speichern des Bildes abgebrochen.",
+                "no_image_to_save": "Es wurde noch kein Durchschnittsbild zum Speichern generiert.",
+                "warning_no_image": "Kein Bild",
+                "error_generic": "Ein Fehler ist aufgetreten: {error}",
+                "compression_frame": "Komprimierung (JPEG-Qualität)",
+                "quality_label": "Qualität (1-100):",
+                "language_button": "Sprache: English",
+                "language_menu": "Sprache wählen",
+                "choose_folder_title": "Wählen Sie einen Ordner mit JPG-Bildern",
+                "choose_files_title": "Wählen Sie einzelne JPG-Bilder aus",
+                "target_size_info": "Zielgröße: 200x150 Pixel", # Angepasster Text
+                "image_preview_frame": "Vorschau Durchschnittsbild",
+                "eagle_sound": "" # Eagle Sound nicht in Deutsch
+            },
+            "en": {
+                "app_title": "Image Averager",
+                "input_frame": "Image Input",
+                "browse_folder": "Select Folder",
+                "add_single_images": "Add Single Images",
+                "clear_selection": "Clear Selection",
+                "selected_count": "Selected Images:",
+                "status_initial": "Select a folder or images...",
+                "status_processing": "Processing images...",
+                "status_preview_ready": "Average image preview ready.",
+                "status_invalid_folder": "Invalid folder selected.",
+                "status_no_jpg_in_folder": "No JPG images found in '{folder}'.",
+                "status_no_images_selected": "No images selected for processing.",
+                "status_no_images_processed": "No images processed successfully.",
+                "status_error_loading_single": "Error loading {filename}: {error}",
+                "save_button": "Save Average Image",
+                "save_dialog_title": "Save Average Image As",
+                "success_save": "Average image saved as '{path}'.",
+                "error_save": "Error saving image: {error}",
+                "save_cancelled": "Image saving cancelled.",
+                "no_image_to_save": "No average image has been generated yet to save.",
+                "warning_no_image": "No Image",
+                "error_generic": "An error occurred: {error}",
+                "compression_frame": "Compression (JPEG Quality)",
+                "quality_label": "Quality (1-100):",
+                "language_button": "Sprache: Deutsch",
+                "language_menu": "Select Language",
+                "choose_folder_title": "Choose a folder with JPG images",
+                "choose_files_title": "Select single JPG images",
+                "target_size_info": "Target Size: 200x150 Pixels", # Angepasster Text
+                "image_preview_frame": "Average Image Preview",
+                "eagle_sound": "Eagle Sound! Hahaha." # Eagle Sound in Englisch
+            }
+        }
+
+        self.create_widgets()
+        self.update_texts() # Initial die Texte setzen
+
+    def create_widgets(self):
+        # --- Sprachauswahl-Button ---
+        self.language_button = tk.Button(self.master, text="", command=self.toggle_language)
+        self.language_button.pack(anchor="ne", padx=10, pady=5) 
+
+        # --- Eingabe-Optionen ---
+        self.input_frame = tk.LabelFrame(self.master)
+        self.input_frame.pack(pady=10, padx=10, fill="x")
+
+        self.upload_folder_button = tk.Button(self.input_frame, text="", command=self.browse_folder)
+        self.upload_folder_button.pack(side="left", padx=5, pady=5, expand=True)
+
+        self.upload_single_button = tk.Button(self.input_frame, text="", command=self.add_single_images)
+        self.upload_single_button.pack(side="left", padx=5, pady=5, expand=True)
+
+        self.clear_selection_button = tk.Button(self.input_frame, text="", command=self.clear_selection)
+        self.clear_selection_button.pack(side="right", padx=5, pady=5)
+
+        # --- Anzahl der ausgewählten Bilder ---
+        self.selected_count_label = tk.Label(self.master, text="", fg="blue")
+        self.selected_count_label.pack(pady=5)
+
+        # --- Status / Info Label ---
+        self.status_label = tk.Label(self.master, text="", fg="blue")
+        self.status_label.pack(pady=5)
+
+        # --- Zielgröße Anzeige (jetzt nur Info) ---
+        self.target_size_frame = tk.LabelFrame(self.master)
+        self.target_size_frame.pack(pady=10, padx=10, fill="x")
+        
+        # Nur ein Label für die feste Größe
+        self.target_size_label = tk.Label(self.target_size_frame, text="")
+        self.target_size_label.pack(padx=5, pady=5)
+        
+        # Inch/CM Button und der "suck" Label sind entfernt worden
+        
+        # --- Komprimierungs-Option ---
+        self.compression_frame = tk.LabelFrame(self.master)
+        self.compression_frame.pack(pady=10, padx=10, fill="x")
+
+        self.quality_label = tk.Label(self.compression_frame, text="")
+        self.quality_label.pack(side="left", padx=5, pady=5)
+
+        self.quality_scale = ttk.Scale(
+            self.compression_frame,
+            from_=1, to=100,
+            orient="horizontal",
+            command=self.update_quality 
+        )
+        self.quality_scale.set(85) # Standardqualität
+        self.quality_scale.pack(side="left", padx=5, pady=5, expand=True, fill="x")
+
+        self.quality_value_label = tk.Label(self.compression_frame, text="85")
+        self.quality_value_label.pack(side="right", padx=5, pady=5)
+
+        # --- Speicher-Button ---
+        self.save_button = tk.Button(self.master, text="", command=self.save_average_image, state=tk.DISABLED)
+        self.save_button.pack(pady=10)
+
+        # --- Vorschau des Durchschnittsbildes ---
+        self.image_preview_frame = tk.LabelFrame(self.master)
+        self.image_preview_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+        self.image_label = tk.Label(self.image_preview_frame)
+        self.image_label.pack(pady=5, padx=5)
+
+    def update_quality(self, event=None):
+        self.quality_value_label.config(text=str(int(self.quality_scale.get())))
+
+    def toggle_language(self):
+        if self.current_lang == "de":
+            self.current_lang = "en"
+        else:
+            self.current_lang = "de"
+        
+        self.update_texts()
+        
+        # Pop-up mit "Eagle Sound"
+        if self.current_lang == "en":
+            messagebox.showinfo(self.texts["en"]["app_title"], self.texts["en"]["eagle_sound"])
+        elif self.current_lang == "de":
+            # Optional: Hier könnte ein anderer deutscher Witz stehen, falls gewünscht
+            pass
+
+    # update_unit_display und toggle_unit_display sind nicht mehr notwendig und wurden entfernt
+
+    def update_texts(self):
+        lang = self.current_lang
+        texts = self.texts[lang]
+
+        self.master.title(texts["app_title"])
+        self.language_button.config(text=texts["language_button"])
+        self.input_frame.config(text=texts["input_frame"])
+        self.upload_folder_button.config(text=texts["browse_folder"])
+        self.upload_single_button.config(text=texts["add_single_images"]) 
+        self.clear_selection_button.config(text=texts["clear_selection"])
+        self.selected_count_label.config(text=f"{texts['selected_count']} {len(self.images_paths)}")
+        self.status_label.config(text=texts["status_initial"])
+        self.compression_frame.config(text=texts["compression_frame"])
+        self.quality_label.config(text=texts["quality_label"])
+        self.save_button.config(text=texts["save_button"])
+        self.image_preview_frame.config(text=texts["image_preview_frame"]) 
+        
+        # Aktualisierung des Labels für die feste Zielgröße
+        self.target_size_frame.config(text=texts["target_size_info"])
+        self.target_size_label.config(text=texts["target_size_info"])
+
+
+        if not self.images_paths:
+             self.status_label.config(text=texts["status_initial"])
+        else: 
+             self.status_label.config(text=texts["status_preview_ready"] if self.current_avg_image_pil else texts["status_processing"])
+
+
+    def browse_folder(self):
+        folder_selected = filedialog.askdirectory(title=self.texts[self.current_lang]["choose_folder_title"])
+        if folder_selected:
+            jpg_files = self.check_jpg_in_folder(folder_selected)
+            if not jpg_files:
+                messagebox.showinfo(self.texts[self.current_lang]["warning_no_image"], self.texts[self.current_lang]["status_no_jpg_in_folder"].format(folder=folder_selected))
+                self.clear_selection()
+                return
+
+            self.images_paths = [os.path.join(folder_selected, f) for f in jpg_files]
+            self.update_image_count_and_process() 
+
+    def add_single_images(self):
+        files_selected = filedialog.askopenfilenames(
+            title=self.texts[self.current_lang]["choose_files_title"],
+            filetypes=[("JPEG files", "*.jpg"), ("JPEG files", "*.jpeg"), ("All files", "*.*")]
+        )
+        if files_selected:
+            for file in files_selected:
+                if file.lower().endswith(('.jpg', '.jpeg')) and file not in self.images_paths:
+                    self.images_paths.append(file)
+            self.update_image_count_and_process() 
+
+    def clear_selection(self):
+        self.images_paths = []
+        self.update_image_count_and_process() 
+
+    def update_image_count_and_process(self):
+        self.selected_count_label.config(text=f"{self.texts[self.current_lang]['selected_count']} {len(self.images_paths)}")
+        if self.images_paths:
+            self.status_label.config(text=self.texts[self.current_lang]["status_processing"], fg="orange")
+            self.image_label.config(image='') 
+            self.save_button.config(state=tk.DISABLED) 
+
+            threading.Thread(target=self._process_images_threaded, daemon=True).start()
+        else:
+            self.status_label.config(text=self.texts[self.current_lang]["status_initial"], fg="blue")
+            self.image_label.config(image='')
+            self.current_avg_image_pil = None
+            self.save_button.config(state=tk.DISABLED)
+
+
+    def _process_images_threaded(self):
+        avg_image_pil = self.process_images_logic(self.images_paths)
+        
+        self.master.after(0, lambda: self._update_gui_after_processing(avg_image_pil))
+
+    def _update_gui_after_processing(self, avg_image_pil):
+        if avg_image_pil:
+            self.current_avg_image_pil = avg_image_pil
+            display_image = avg_image_pil.copy()
+            display_image.thumbnail((300, 300)) 
+            self.photo = ImageTk.PhotoImage(display_image)
+            self.image_label.config(image=self.photo)
+            self.image_label.image = self.photo 
+            self.save_button.config(state=tk.NORMAL) 
+            self.status_label.config(text=self.texts[self.current_lang]["status_preview_ready"], fg="green")
+        else:
+            self.current_avg_image_pil = None
+            self.image_label.config(image='')
+            self.save_button.config(state=tk.DISABLED)
+
+    def check_jpg_in_folder(self, folder):
+        files = os.listdir(folder)
+        jpg_files = [file for file in files if file.lower().endswith(('.jpg', '.jpeg'))]
+        return jpg_files
+
+    def process_images_logic(self, image_paths):
+        if not image_paths:
+            self.master.after(0, lambda: self.status_label.config(text=self.texts[self.current_lang]["status_no_images_selected"], fg="red"))
+            return None
+
+        rgb_arrays = []
+
+        # Die Zielgröße ist jetzt fest auf 200x150 Pixel
+        target_w, target_h = self.target_size_px 
+
+        for image_path in image_paths:
+            try:
+                image = Image.open(image_path).convert('RGB')
+                image = image.resize((target_w, target_h)) # Feste Größe hier anwenden
+                rgb_array = np.array(image, dtype=np.float32)
+                rgb_arrays.append(rgb_array)
+            except Exception as e:
+                filename = os.path.basename(image_path)
+                self.master.after(0, lambda fn=filename, err=e: self.status_label.config(text=self.texts[self.current_lang]["status_error_loading_single"].format(filename=fn, error=err), fg="orange"))
+                continue 
+
+        if not rgb_arrays:
+            self.master.after(0, lambda: self.status_label.config(text=self.texts[self.current_lang]["status_no_images_processed"], fg="red"))
+            return None
+
+        all_images = np.stack(rgb_arrays, axis=0)
+        avg_image = np.mean(all_images, axis=0)
+        avg_image_uint8 = avg_image.astype(np.uint8)
+        avg_pil_image = Image.fromarray(avg_image_uint8, 'RGB')
+        return avg_pil_image
+
+    def save_average_image(self):
+        if self.current_avg_image_pil:
+            save_path = filedialog.asksaveasfilename(
+                defaultextension=".jpg",
+                filetypes=[("JPEG files", "*.jpg"), ("All files", "*.*")],
+                title=self.texts[self.current_lang]["save_dialog_title"]
+            )
+            if save_path:
+                try:
+                    quality = int(self.quality_scale.get())
+                    self.current_avg_image_pil.save(save_path, format='JPEG', quality=quality)
+                    messagebox.showinfo(self.texts[self.current_lang]["app_title"], self.texts[self.current_lang]["success_save"].format(path=save_path))
+                    self.status_label.config(text=self.texts[self.current_lang]["success_save"].format(path=save_path), fg="blue")
+                except Exception as e:
+                    messagebox.showerror(self.texts[self.current_lang]["app_title"], self.texts[self.current_lang]["error_save"].format(error=e))
+                    self.status_label.config(text=self.texts[self.current_lang]["error_save"].format(error=e), fg="red")
+            else:
+                self.status_label.config(text=self.texts[self.current_lang]["save_cancelled"], fg="blue")
+        else:
+            messagebox.showwarning(self.texts[self.current_lang]["warning_no_image"], self.texts[self.current_lang]["no_image_to_save"])
+            self.status_label.config(text=self.texts[self.current_lang]["no_image_to_save"], fg="red")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ImageAveragerApp(root)
+    root.geometry("650x800") 
+    root.mainloop()
