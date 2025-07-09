@@ -1,5 +1,5 @@
-# image-avarege
-generate the avarege of given images
+# image-average
+generate the average of given images
 
 # usage
 install the requirements with 
